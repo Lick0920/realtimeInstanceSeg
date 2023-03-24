@@ -1,0 +1,27 @@
+_BASE_: "Base-SparseInst.yaml"
+CUDNN_BENCHMARK: false
+MODEL:
+  WEIGHTS: "pretrained_models/resnet50d_ra2-464e36ba.pth"
+  # WEIGHTS: "model_0079999.pth"
+  BACKBONE:
+    FREEZE_AT: 0
+    NAME: "build_resnet_vd_backbone"
+  RESNETS:
+    DEFORM_ON_PER_STAGE: [False, False, True, True] # dcn on res4, res5
+INPUT:
+  CROP:
+    ENABLED: True
+    TYPE: "absolute_range"
+    SIZE: (384, 600)
+  MASK_FORMAT: "polygon"
+OUTPUT_DIR: "output/test_bs8"
+SOLVER:
+  # IMS_PER_BATCH: 4
+  # BASE_LR: 0.000003125
+  # IMS_PER_BATCH: 1
+  # BASE_LR: 0.00000078125
+  
+  # IMS_PER_BATCH: 8
+  # BASE_LR: 0.00000625
+  IMS_PER_BATCH: 32
+  BASE_LR: 0.000025

@@ -90,3 +90,14 @@ class InstanceContextEncoder(nn.Module):
 def build_sparse_inst_encoder(cfg, input_shape):
     name = cfg.MODEL.SPARSE_INST.ENCODER.NAME
     return SPARSE_INST_ENCODER_REGISTRY.get(name)(cfg, input_shape)
+
+
+# if __name__ == "__main__":
+#     import torch
+#     from detectron2.config import get_cfg
+#     from detectron2.modeling import build_model
+#     from detectron2.checkpoint import DetectionCheckpointer
+#     from detectron2.engine import default_argument_parser, default_setup
+    
+#     SPARSE_INST_ENCODER_REGISTRY.get('InstanceContextEncoder')(cfg, input_shape)
+

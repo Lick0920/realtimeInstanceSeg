@@ -37,7 +37,7 @@ def get_parser():
         description="Detectron2 demo for builtin models")
     parser.add_argument(
         "--config-file",
-        default="configs/quick_schedules/mask_rcnn_R_50_FPN_inference_acc_test.yaml",
+        default="../detectron2/configs/quick_schedules/mask_rcnn_R_50_FPN_inference_acc_test.yaml",
         metavar="FILE",
         help="path to config file",
     )

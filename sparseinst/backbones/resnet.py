@@ -404,3 +404,61 @@ def build_resnet_vd_backbone(cfg, input_shape):
     model = ResNet(stage_blocks, layers, stem_type="deep",
                    stem_width=32, avg_down=True, norm_layer=norm)
     return model
+
+
+
+if __name__ == '__main__':
+    import torch
+    from torchsummary import summary
+    
+    from detectron2.config import get_cfg
+    from detectron2.engine import default_argument_parser, default_setup
+    from detectron2.modeling import build_backbone
+    import sys
+    sys.path.append('D:\project_python\SparseInst\sparseinst/')
+    from config import add_sparse_inst_config
+    # from config import cfg
+    def setup(args):
+        """
+        Create configs and perform basic setups.
+        """
+        cfg = get_cfg()
+        add_sparse_inst_config(cfg)
+        cfg.merge_from_file(args.config_file)
+        cfg.merge_from_list(args.opts)
+        cfg.freeze()
+        default_setup(cfg, args)
+        return cfg
+    args = default_argument_parser()
+    args.add_argument("--fp16", action="store_true",
+                      help="support fp16 for inference")
+    args = args.parse_args()
+
+    # args.config_file = 'D:\project_python\SparseInst\configs/sparse_inst_r50vd_dcn_giam_aug.yaml'
+    args.config_file = 'D:\project_python\SparseInst\configs\sparse_inst_r50vd_base.yaml'
+    print("Command Line Args:", args)
+    cfg = setup(args)
+    model = build_backbone(cfg)
+    model.eval()
+    # 放到cuda
+    device = torch.device('cuda:0')
+    model.to(device)
+    # summary(model, (3, 512, 512))
+    
+    model.load_state_dict(torch.load('D:\project_python\SparseInst\pretrained_models/resnet50d_ra2-464e36ba.pth'))
+
+    # # nn.Sequential(*[
+    # #             nn.Conv3d(3, 64, 3, stride=2, padding=1, bias=False),
+    # #             nn.BatchNorm3d(64)])
+
+    # x = torch.randn(1, 3, 512, 512).to(device)
+    # out = model(x)
+    # print(out['res3'].shape,out['res4'].shape,out['res5'].shape)
+    # from mmcv.cnn.utils import get_model_complexity_info
+    # flops, params = get_model_complexity_info(model, (3, 2240, 2240))
+    # split_line = '=' * 30
+    # print(f'{split_line}\nInput shape: {(3, 2240, 2240)}\n'
+    #       f'Flops: {flops}\nParams: {params}\n{split_line}')
+    # print('!!!Please be cautious if you use the results in papers. '
+    #       'You may need to check if all ops are supported and verify that the '
+    #       'flops computation is correct.')
