@@ -15,7 +15,7 @@ from detectron2.engine import default_argument_parser, default_setup
 from detectron2.data import build_detection_test_loader
 from detectron2.evaluation import COCOEvaluator, print_csv_format
 
-sys.path.append(".")
+sys.path.append("D:\project_python\SparseInst/")
 from sparseinst import build_sparse_inst_encoder, build_sparse_inst_decoder, add_sparse_inst_config
 from sparseinst import COCOMaskEvaluator
 
@@ -164,7 +164,10 @@ def test_sparseinst_speed(cfg, fp16=False):
                 if idx % 1000 == 0:
                     print("process: [{}/{}] fps: {:.3f}".format(idx,
                                                                 len(data_loader), 1/np.mean(durations[100:])))
-                evaluator.process(inputs, [{"instances": output}])
+                if output == None:
+                    print("unkown bug,skip this image")
+                else:
+                    evaluator.process(inputs, [{"instances": output}])
     # evaluate
     results = evaluator.evaluate()
     print_csv_format(results)
@@ -180,7 +183,8 @@ def setup(args):
     """
     cfg = get_cfg()
     add_sparse_inst_config(cfg)
-    cfg.merge_from_file(args.config_file)
+    # cfg.merge_from_file(args.config_file)
+    cfg.merge_from_file("D:\project_python/SparseInst//configs/ares3d_giam_dcn.yaml")
     cfg.merge_from_list(args.opts)
     cfg.freeze()
     default_setup(cfg, args)

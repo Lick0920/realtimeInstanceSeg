@@ -1,10 +1,36 @@
 _BASE_: "Base-SparseInst.yaml"
 MODEL:
-  WEIGHTS: "pretrained_models/resnet50d_ra2-464e36ba.pth"
+  # SPARSE_INST: 
+  #   DATASET_MAPPER: None # 不datasetmapper 
+  # WEIGHTS: "pretrained_models/resnet50d_ra2-464e36ba.pth"
+  WEIGHTS: "D:/project_python/SparseInst/pretrained_models//3d_layer1_re.pth"
+  # WEIGHTS: "pretrained_models//nimaded.pth"
+  
   BACKBONE:
     FREEZE_AT: 0
-    NAME: "build_resnet_vd_backbone"
+    NAME: "build_resnet_vd3d_backbone"
   RESNETS:
-    DEFORM_ON_PER_STAGE: [False, False, True, True] # dcn on res4, res5
-OUTPUT_DIR: "output/rootairtest"
-  
+    DEFORM_ON_PER_STAGE: [2, False, True, True] # dcn on res4, res5
+INPUT:
+  CROP:
+    ENABLED: True
+    TYPE: "absolute_range"
+    SIZE: (384, 600)
+  MASK_FORMAT: "polygon"
+
+OUTPUT_DIR: "output/aaaresnet3d_bs8_prelayer1_qiekuai_8_huncai/"
+SOLVER:
+  IMS_PER_BATCH: 8
+  BASE_LR: 0.00000625
+  # IMS_PER_BATCH: 1
+  # BASE_LR: 0.00000078125
+DATASETS:
+  PRECOMPUTED_PROPOSAL_TOPK_TEST: 1000
+  PRECOMPUTED_PROPOSAL_TOPK_TRAIN: 2000
+  PROPOSAL_FILES_TEST: []
+  PROPOSAL_FILES_TRAIN: []
+  TEST:
+  - coco_rootair_val
+  TRAIN:
+  - coco_rootair_train
+  # - coco_rootair_val

@@ -2,6 +2,7 @@
 #  Copyright (c) Tianheng Cheng and its affiliates. All Rights Reserved
 
 import math
+import torch
 import torch.nn as nn
 from timm.models.resnet import BasicBlock
 from timm.models.layers import DropBlock2d, DropPath, AvgPool2dSame, create_attn, get_attn
@@ -479,6 +480,11 @@ class ResNet(Backbone):
         # self.num_classes = num_classes
         self.drop_rate = drop_rate
         super(ResNet, self).__init__()
+        
+        # init 3d conv 参数
+        self.patch_slice = 8
+        # 通道混洗的 分组数
+        self.num_groups = 2
 
         # Stem
         deep_stem = 'deep' in stem_type
@@ -573,22 +579,64 @@ class ResNet(Backbone):
     def forward(self, x): 
         # x [1, 3, 512, 512]
         input_shape = x.size()
+        # x = x.view(input_shape[0], input_shape[1], 1, input_shape[2], input_shape[3])
         # slice 实现图片分割
-        patch_num = 8
-        input_shape_reshaped = x.view(input_shape[0], input_shape[1], patch_num*patch_num, input_shape[2]//patch_num,input_shape[3]//patch_num)
-        # [1,3,4,256,256] -conv1---> [1, 64, 2, 128,128] 下采样太多？  # 立体维度不下采样
-        x = self.conv1(input_shape_reshaped)
+
+        index = [i + j*self.patch_slice*self.patch_slice for i in range(0, self.patch_slice*self.patch_slice) for j in range(0, input_shape[2]//self.patch_slice//self.patch_slice)]
+        selected_rows = torch.index_select(x, 2, torch.LongTensor(index).to("cuda:0"))
+        selected_rows_shape = selected_rows.size()
+        x = selected_rows.view(selected_rows_shape[0], selected_rows_shape[1], self.patch_slice*self.patch_slice, selected_rows_shape[2]//self.patch_slice,selected_rows_shape[3]//self.patch_slice)
+        
+        # # 原始 直接用view loss下降得不好 改成切块
+        # # input_shape_reshaped = x.view(input_shape[0], input_shape[1], self.patch_slice*self.patch_slice, input_shape[2]//self.patch_slice,input_shape[3]//self.patch_slice)
+        # input_shape_reshaped_list = x.clone().view_as(torch.zeros(input_shape[0], input_shape[1], self.patch_slice*self.patch_slice, input_shape[2]//self.patch_slice,input_shape[3]//self.patch_slice))
+        # for i in range(self.patch_slice):
+        #     for j in range(self.patch_slice):
+        #         input_shape_reshaped_list[:, :, i*self.patch_slice+j, :, :] = x[:, :, i*input_shape[2]//self.patch_slice:(i+1)*input_shape[2]//self.patch_slice, j*input_shape[3]//self.patch_slice:(j+1)*input_shape[3]//self.patch_slice].clone()
+        # # [1,3,4,256,256] -conv1---> [1, 64, 2, 128,128] 下采样太多？  # 立体维度不下采样
+        # # device = torch.device('cuda:0')
+        
+        # # # 将第2个维度进行通道混洗 --> group = 2 效果变差了。
+        # # batch_size, num_channels, num_3d,height, width = input_shape_reshaped_list.shape
+        # # channels_per_group = num_3d // self.num_groups
+        # # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, self.num_groups, channels_per_group, height, width)
+        # # input_shape_reshaped_list = input_shape_reshaped_list.permute(0, 1, 3, 2, 4, 5).contiguous()
+        # # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, num_3d, height, width)
+        
+        x = self.conv1(x)
         x = self.bn1(x)
         x = self.act1(x)
         x = self.maxpool(x) # 3d maxpooling 1 64 1 64 64 # 下采样太多？# 立体维度不下采样 keep 4
         outputs = {}
         x = self.layer1(x)  # 1 256 4 64 64
-        # outputs["res2"] = x
         # reshape 
         x_layer1_shape = x.size()
-        x_layer1_reshape2d = x.view(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*patch_num,x_layer1_shape[-1]*patch_num)
-        x = self.layer2(x_layer1_reshape2d)
 
+        # reshape回去也要同样方法？ 保持空间信息特征 --> 先直接view回去 空间信息反正都已经丢失了
+        x_layer1_reshape2d = x.view(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*self.patch_slice,x_layer1_shape[-1]*self.patch_slice)
+
+        # ### 先通道混洗回去，再reshape回去
+        # # 将通道混洗的操作 reshape回来 因为后面是2d卷积 要不混合的空间重新排列成原始的
+        # batch_size, num_channels, num_3d,height, width = x.shape
+        # # self.num_groups = 2  # 将通道分成4组
+        # channels_per_group = num_3d // self.num_groups
+        # x = x.view(batch_size, num_channels, self.num_groups, channels_per_group, height, width)
+        # x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
+        # x = x.view(batch_size, num_channels, num_3d, height, width)
+        
+
+        # x_layer1_reshape2d = x.clone().view_as(torch.zeros(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*self.patch_slice,x_layer1_shape[-1]*self.patch_slice))
+        # # x_layer1_reshape2d = x.clone().view_as(torch.zeros(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-1]*self.patch_slice,x_layer1_shape[-2]*self.patch_slice))
+        
+        # for i in range(self.patch_slice):
+        #     for j in range(self.patch_slice):
+        #         # x_layer1_reshape2d[:, :, i*x_layer1_shape[-2]:(i+1)*x_layer1_shape[-2], j*x_layer1_shape[-1]:(j+1)*x_layer1_shape[-1]] = x[:, :, i*self.patch_slice+j, :, :].clone()
+        #         # 因为通道混洗操作 要行列反着来
+        #         x_layer1_reshape2d[:, :, i*x_layer1_shape[-2]:(i+1)*x_layer1_shape[-2], j*x_layer1_shape[-1]:(j+1)*x_layer1_shape[-1]] = x[:, :, j*self.patch_slice+i, :, :].clone()
+                
+        
+        x = self.layer2(x_layer1_reshape2d)
+        # torch.cuda.empty_cache()
         outputs["res3"] = x
         x = self.layer3(x)
         outputs["res4"] = x
@@ -635,6 +683,120 @@ if __name__ == '__main__':
     import torch
     from torchsummary import summary
     
+    # 随机生成一个输入tensor 1 3 12 12
+    # 输入一张图像，read为tensor格式
+    from PIL import Image
+    import torchvision.transforms as transforms
+
+    # 读取图片
+    # img = Image.open("D:\\project_python\\CascadePSP\\demo\\big_sample_image.jpg")
+    img = Image.open("E:\\dataset\\coco\\train2017\\000000000074.jpg")
+    # 定义transforms，将图片转换为tensor格式
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Resize((384,600))
+    ])
+
+    # 将图片转换为tensor格式
+    img_tensor = transform(img)
+
+    # 打印tensor的形状和数据类型
+    print(img_tensor.shape)
+    print(img_tensor.dtype)
+
+    x = img_tensor
+    input_shape = img_tensor.size()
+    patch_slice = 4
+
+
+    # 定义需要重新排列的行的索引
+    # 生成数字列表
+    index = [i + j*patch_slice*patch_slice for i in range(0, patch_slice*patch_slice) for j in range(0, 384//patch_slice//patch_slice)]
+
+    # 输出结果
+    print(index)
+    # 将需要重新排列的行按照索引进行选择
+    selected_rows = torch.index_select(x, 1, torch.LongTensor(index))
+    # 把input_shape_reshaped_list转化成图像格式显示出来
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(1, 1)
+    print(selected_rows.shape)
+    img_np = selected_rows.numpy()
+    img_np = img_np.transpose((1, 2, 0))
+    axs.imshow(img_np)
+    plt.imshow(img_np)
+    plt.show()
+   
+
+    input_shape_reshaped_list = torch.zeros(input_shape[0],patch_slice*patch_slice, input_shape[1]//patch_slice,input_shape[2]//patch_slice)
+    for i in range(patch_slice):
+        for j in range(patch_slice):
+            # input_shape_reshaped_list[:, i*patch_slice+j, :, :] = x[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice]
+            # 为了更好的信息交互，我要采用降采样的方式来reshape --> 15 26 37 48 行列重排
+            input_shape_reshaped_list[:, i*patch_slice+j, :, :] = x[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice]
+
+    # 将x y 行列重排 
+    
+    # input_shape_reshaped_list = x.view(input_shape[0],patch_slice*patch_slice, input_shape[1]//patch_slice,input_shape[2]//patch_slice)
+
+    # 将第2个维度进行通道混洗
+    batch_size, num_channels, height, width = input_shape_reshaped_list.shape
+    num_groups = 2  # 将通道分成4组
+    channels_per_group = num_channels // num_groups
+    input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_groups, channels_per_group, height, width)
+    input_shape_reshaped_list = input_shape_reshaped_list.permute(0, 2, 1, 3, 4).contiguous()
+    input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, height, width)
+
+    # reshape_img = img_tensor.view(3, 16, img_tensor.shape[1]//4, img_tensor.shape[2]//4)
+    res = []
+    for i in range(16):
+        img_tensor_p = input_shape_reshaped_list[:,i,::]
+        res.append(img_tensor_p)
+    # 将
+    # 转化成图像格式显示出来
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(4, 4)
+    for i,image_tensor in enumerate(res):
+        print(image_tensor.shape)
+        img_np = image_tensor.numpy()
+        img_np = img_np.transpose((1, 2, 0))
+        axs[i//4, i%4].imshow(img_np)
+        plt.imshow(img_np)
+    plt.show()
+    
+    # reshape回去
+    # 将通道混洗后的张量reshape回去
+    input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_groups, channels_per_group, height, width)
+    input_shape_reshaped_list = input_shape_reshaped_list.permute(0, 2, 1, 3, 4).contiguous()
+    input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, height, width)
+
+    output = torch.zeros(input_shape[0],input_shape[1], input_shape[2])
+    # 把切成16块的input_shape_reshaped_list拼接回去
+    for i in range(patch_slice):
+        for j in range(patch_slice):
+            # output[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice] = input_shape_reshaped_list[:, i*patch_slice+j, :, :]
+            # 行列交换
+            # output[:, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice] = input_shape_reshaped_list[:, i*patch_slice+j, :, :]
+            # input_shape_reshaped_list = input_shape_reshaped_list.transpose_(2,3)
+            output[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice] = input_shape_reshaped_list[:, j*patch_slice+i, :, :]
+    
+    # 把input_shape_reshaped_list转化成图像格式显示出来
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(1, 1)
+    print(output.shape)
+    img_np = output.numpy()
+    img_np = img_np.transpose((1, 2, 0))
+    axs.imshow(img_np)
+    plt.imshow(img_np)
+    plt.show()
+
+    # input_tensor = torch.randn(1, 3, 256, 256)
+    # # 将input分成16张小图，每张图的大小为64*64，第一张图是第一列的像素点，第二张图是第的像素点，以此类推
+    # reshape = input_tensor.view(1, 3, 16, 64, 64)
+    # print(reshape.size())
+    # print(input_tensor)
+    # print(reshape)
+
     from detectron2.config import get_cfg
     from detectron2.engine import default_argument_parser, default_setup
     from detectron2.modeling import build_backbone
@@ -665,21 +827,18 @@ if __name__ == '__main__':
     model.eval()
     # 放到cuda
     device = torch.device('cuda:0')
-    model.to(device)
-    summary(model, (3, 512, 512))
+    # model.to(device)
+    # summary(model, (3, 512, 512))
     
-    # x = torch.randn(1, 3, 512, 512).to(device)
-    # out = model(x)
-    # print(out['res3'].shape,out['res4'].shape,out['res5'].shape)
-    # from mmcv.cnn.utils import get_model_complexity_info
-    # flops, params = get_model_complexity_info(model, (3, 224, 224))
-    # split_line = '=' * 30
-    # print(f'{split_line}\nInput shape: {(3, 224, 224)}\n'
-    #       f'Flops: {flops}\nParams: {params}\n{split_line}')
-    # print('!!!Please be cautious if you use the results in papers. '
-    #       'You may need to check if all ops are supported and verify that the '
-    #       'flops computation is correct.')
+    x = torch.randn(1, 3, 512, 512)
+    out = model(x)
+    print(out['res3'].shape,out['res4'].shape,out['res5'].shape)
+    from mmcv.cnn.utils import get_model_complexity_info
+    flops, params = get_model_complexity_info(model, (3, 384, 600))
+    split_line = '=' * 30
+    print(f'{split_line}\nInput shape: {(3, 384, 600)}\n'
+          f'Flops: {flops}\nParams: {params}\n{split_line}')
+    print('!!!Please be cautious if you use the results in papers. '
+          'You may need to check if all ops are supported and verify that the '
+          'flops computation is correct.')
     # torch.save(model.state_dict(), 'resnet50_vd.pth')
-
-    ## 加载预训练resnet50_vd.pth的参数放入resnet50_vd_3d模型中，多出来的3d卷积层参数复制2d卷积层参数
-    model.load_state_dict(torch.load('D:\project_python\SparseInst\pretrained_models/resnet50d_ra2-464e36ba.pth'))

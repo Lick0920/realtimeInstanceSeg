@@ -445,20 +445,20 @@ if __name__ == '__main__':
     model.to(device)
     # summary(model, (3, 512, 512))
     
-    model.load_state_dict(torch.load('D:\project_python\SparseInst\pretrained_models/resnet50d_ra2-464e36ba.pth'))
+    # model.load_state_dict(torch.load('D:\project_python\SparseInst\pretrained_models/resnet50d_ra2-464e36ba.pth'))
 
-    # # nn.Sequential(*[
-    # #             nn.Conv3d(3, 64, 3, stride=2, padding=1, bias=False),
-    # #             nn.BatchNorm3d(64)])
+    # nn.Sequential(*[
+    #             nn.Conv3d(3, 64, 3, stride=2, padding=1, bias=False),
+    #             nn.BatchNorm3d(64)])
 
-    # x = torch.randn(1, 3, 512, 512).to(device)
-    # out = model(x)
-    # print(out['res3'].shape,out['res4'].shape,out['res5'].shape)
-    # from mmcv.cnn.utils import get_model_complexity_info
-    # flops, params = get_model_complexity_info(model, (3, 2240, 2240))
-    # split_line = '=' * 30
-    # print(f'{split_line}\nInput shape: {(3, 2240, 2240)}\n'
-    #       f'Flops: {flops}\nParams: {params}\n{split_line}')
-    # print('!!!Please be cautious if you use the results in papers. '
-    #       'You may need to check if all ops are supported and verify that the '
-    #       'flops computation is correct.')
+    x = torch.randn(1, 3, 512, 512).to(device)
+    out = model(x)
+    print(out['res3'].shape,out['res4'].shape,out['res5'].shape)
+    from mmcv.cnn.utils import get_model_complexity_info
+    flops, params = get_model_complexity_info(model, (3, 2240, 2240))
+    split_line = '=' * 30
+    print(f'{split_line}\nInput shape: {(3, 2240, 2240)}\n'
+          f'Flops: {flops}\nParams: {params}\n{split_line}')
+    print('!!!Please be cautious if you use the results in papers. '
+          'You may need to check if all ops are supported and verify that the '
+          'flops computation is correct.')
