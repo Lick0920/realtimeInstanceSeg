@@ -125,8 +125,9 @@ class Bottleneck(nn.Module):
         outplanes = planes * self.expansion
         first_dilation = first_dilation or dilation
         use_aa = aa_layer is not None and (stride == 2 or first_dilation != dilation)
-
-        self.conv1 = nn.Conv2d(inplanes, first_planes, kernel_size=1, bias=False)
+        
+        # 直接改了 bottleneck  看这里改改
+        self.conv1 = nn.Conv2d(inplanes + 64, first_planes , kernel_size=1, bias=False)
         self.bn1 = norm_layer(first_planes)
         self.act1 = act_layer(inplace=True)
 
@@ -203,19 +204,12 @@ class Bottleneck_3d(nn.Module):
         first_dilation = first_dilation or dilation
         use_aa = aa_layer is not None and (stride == 2 or first_dilation != dilation)
 
-        # self.conv1 = nn.Conv2d(inplanes, first_planes, kernel_size=1, bias=False)
-        # self.bn1 = norm_layer(first_planes)
-        # self.act1 = act_layer(inplace=True)
+       
         self.conv1 = nn.Conv3d(inplanes, first_planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm3d(first_planes)
         self.act1 = act_layer(inplace=True)
 
-        # self.conv2 = nn.Conv2d(
-        #     first_planes, width, kernel_size=3, stride=1 if use_aa else stride,
-        #     padding=first_dilation, dilation=first_dilation, groups=cardinality, bias=False)
-        # self.bn2 = norm_layer(width)
-        # self.drop_block = drop_block() if drop_block is not None else nn.Identity()
-        # self.act2 = act_layer(inplace=True)
+    
         self.conv2 = nn.Conv3d(
             first_planes, width, kernel_size=3, stride=1 if use_aa else stride,
             padding=first_dilation, dilation=first_dilation, groups=cardinality, bias=False)
@@ -223,9 +217,6 @@ class Bottleneck_3d(nn.Module):
         self.drop_block = drop_block() if drop_block is not None else nn.Identity()
         self.act2 = act_layer(inplace=True)
         self.aa = self.create_aa(aa_layer, channels=width, stride=stride, enable=use_aa)
-
-        # self.conv3 = nn.Conv2d(width, outplanes, kernel_size=1, bias=False)
-        # self.bn3 = norm_layer(outplanes)
 
         self.conv3 = nn.Conv3d(width, outplanes, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm3d(outplanes)
@@ -402,74 +393,6 @@ def make_blocks(
     return stages, feature_info
 
 class ResNet(Backbone):
-    """ResNet / ResNeXt / SE-ResNeXt / SE-Net
-
-    This class implements all variants of ResNet, ResNeXt, SE-ResNeXt, and SENet that
-      * have > 1 stride in the 3x3 conv layer of bottleneck
-      * have conv-bn-act ordering
-
-    This ResNet impl supports a number of stem and downsample options based on the v1c, v1d, v1e, and v1s
-    variants included in the MXNet Gluon ResNetV1b model. The C and D variants are also discussed in the
-    'Bag of Tricks' paper: https://arxiv.org/pdf/1812.01187. The B variant is equivalent to torchvision default.
-
-    ResNet variants (the same modifications can be used in SE/ResNeXt models as well):
-      * normal, b - 7x7 stem, stem_width = 64, same as torchvision ResNet, NVIDIA ResNet 'v1.5', Gluon v1b
-      * c - 3 layer deep 3x3 stem, stem_width = 32 (32, 32, 64)
-      * d - 3 layer deep 3x3 stem, stem_width = 32 (32, 32, 64), average pool in downsample
-      * e - 3 layer deep 3x3 stem, stem_width = 64 (64, 64, 128), average pool in downsample
-      * s - 3 layer deep 3x3 stem, stem_width = 64 (64, 64, 128)
-      * t - 3 layer deep 3x3 stem, stem width = 32 (24, 48, 64), average pool in downsample
-      * tn - 3 layer deep 3x3 stem, stem width = 32 (24, 32, 64), average pool in downsample
-
-    ResNeXt
-      * normal - 7x7 stem, stem_width = 64, standard cardinality and base widths
-      * same c,d, e, s variants as ResNet can be enabled
-
-    SE-ResNeXt
-      * normal - 7x7 stem, stem_width = 64
-      * same c, d, e, s variants as ResNet can be enabled
-
-    SENet-154 - 3 layer deep 3x3 stem (same as v1c-v1s), stem_width = 64, cardinality=64,
-        reduction by 2 on width of first bottleneck convolution, 3x3 downsample convs after first block
-
-    Parameters
-    ----------
-    block : Block
-        Class for the residual block. Options are BasicBlockGl, BottleneckGl.
-    layers : list of int
-        Numbers of layers in each block
-    num_classes : int, default 1000
-        Number of classification classes.
-    in_chans : int, default 3
-        Number of input (color) channels.
-    cardinality : int, default 1
-        Number of convolution groups for 3x3 conv in Bottleneck.
-    base_width : int, default 64
-        Factor determining bottleneck channels. `planes * base_width / 64 * cardinality`
-    stem_width : int, default 64
-        Number of channels in stem convolutions
-    stem_type : str, default ''
-        The type of stem:
-          * '', default - a single 7x7 conv with a width of stem_width
-          * 'deep' - three 3x3 convolution layers of widths stem_width, stem_width, stem_width * 2
-          * 'deep_tiered' - three 3x3 conv layers of widths stem_width//4 * 3, stem_width, stem_width * 2
-    block_reduce_first: int, default 1
-        Reduction factor for first convolution output width of residual blocks,
-        1 for all archs except senets, where 2
-    down_kernel_size: int, default 1
-        Kernel size of residual block downsampling path, 1x1 for most archs, 3x3 for senets
-    avg_down : bool, default False
-        Whether to use average pooling for projection skip connection between stages/downsample.
-    output_stride : int, default 32
-        Set the output stride of the network, 32, 16, or 8. Typically used in segmentation.
-    act_layer : nn.Module, activation layer
-    norm_layer : nn.Module, normalization layer
-    aa_layer : nn.Module, anti-aliasing layer
-    drop_rate : float, default 0.
-        Dropout probability before classifier, for training
-    global_pool : str, default 'avg'
-        Global pooling type. One of 'avg', 'max', 'avgmax', 'catavgmax'
-    """
     def __init__(self, block_types, layers, in_chans=3,
                  cardinality=1, base_width=64, stem_width=64, stem_type='', replace_stem_pool=False,
                  output_stride=32, block_reduce_first=1, down_kernel_size=1, avg_down=False,
@@ -493,14 +416,7 @@ class ResNet(Backbone):
             stem_chs = (stem_width, stem_width)
             if 'tiered' in stem_type:
                 stem_chs = (3 * (stem_width // 4), stem_width)
-            # self.conv1 = nn.Sequential(*[
-            #     nn.Conv2d(in_chans, stem_chs[0], 3, stride=2, padding=1, bias=False),
-            #     norm_layer(stem_chs[0]),
-            #     act_layer(inplace=True),
-            #     nn.Conv2d(stem_chs[0], stem_chs[1], 3, stride=1, padding=1, bias=False),
-            #     norm_layer(stem_chs[1]),
-            #     act_layer(inplace=True),
-            #     nn.Conv2d(stem_chs[1], inplanes, 3, stride=1, padding=1, bias=False)])
+
             self.conv1 = nn.Sequential(*[
                 nn.Conv3d(in_chans, stem_chs[0], 3, stride=(1,2,2), padding=1, bias=False),
                 nn.BatchNorm3d(stem_chs[0]),
@@ -509,31 +425,11 @@ class ResNet(Backbone):
                 nn.BatchNorm3d(stem_chs[1]),
                 act_layer(inplace=True),
                 nn.Conv3d(stem_chs[1], inplanes, 3, stride=1, padding=1, bias=False)])
-        # else:
-        #     self.conv1 = nn.Conv2d(in_chans, inplanes, kernel_size=7,
-        #                            stride=2, padding=3, bias=False)
-        # self.bn1 = norm_layer(inplanes)
-        # self.act1 = act_layer(inplace=True)
-        # self.feature_info = [dict(num_chs=inplanes, reduction=2, module='act1')]
+
         self.bn1 = nn.BatchNorm3d(inplanes)
         self.act1 = act_layer(inplace=True)
         self.feature_info = [dict(num_chs=inplanes, reduction=2, module='act1')]
 
-        # Stem Pooling
-        # if replace_stem_pool:
-        #     self.maxpool = nn.Sequential(*filter(None, [
-        #         nn.Conv2d(inplanes, inplanes, 3, stride=1 if aa_layer else 2, padding=1, bias=False),
-        #         aa_layer(channels=inplanes, stride=2) if aa_layer else None,
-        #         norm_layer(inplanes),
-        #         act_layer(inplace=True)
-        #     ]))
-        # else:
-        #     if aa_layer is not None:
-        #         self.maxpool = nn.Sequential(*[
-        #             nn.MaxPool2d(kernel_size=3, stridreduce_firste=1, padding=1),
-        #             aa_layer(channels=inplanes, stride=2)])
-        #     else:
-        #         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=(1,2,2), padding=1)
 
         # Feature Blocks
@@ -579,34 +475,11 @@ class ResNet(Backbone):
     def forward(self, x): 
         # x [1, 3, 512, 512]
         input_shape = x.size()
-        # x = x.view(input_shape[0], input_shape[1], 1, input_shape[2], input_shape[3])
-        # slice 实现图片分割
 
-        # index = [i + j*self.patch_slice*self.patch_slice for i in range(0, self.patch_slice*self.patch_slice) for j in range(0, input_shape[2]//self.patch_slice//self.patch_slice)]
-        # selected_rows = torch.index_select(x, 2, torch.LongTensor(index).to("cuda:0"))
-        # selected_rows_shape = selected_rows.size()
-        # x = selected_rows.view(selected_rows_shape[0], selected_rows_shape[1], self.patch_slice*self.patch_slice, selected_rows_shape[2]//self.patch_slice,selected_rows_shape[3]//self.patch_slice)
-        
         input_shape_reshaped_list = x.clone().view_as(torch.zeros(input_shape[0], input_shape[1], self.patch_slice*self.patch_slice, input_shape[2]//self.patch_slice,input_shape[3]//self.patch_slice))
         for i in range(self.patch_slice):
             for j in range(self.patch_slice):
                 input_shape_reshaped_list[:, :, i*self.patch_slice+j, :, :] = x[:, :, i::self.patch_slice, j::self.patch_slice]
-        
-        # # 原始 直接用view loss下降得不好 改成切块
-        # input_shape_reshaped = x.view(input_shape[0], input_shape[1], self.patch_slice*self.patch_slice, input_shape[2]//self.patch_slice,input_shape[3]//self.patch_slice)
-        # input_shape_reshaped_list = x.clone().view_as(torch.zeros(input_shape[0], input_shape[1], self.patch_slice*self.patch_slice, input_shape[2]//self.patch_slice,input_shape[3]//self.patch_slice))
-        # # for i in range(self.patch_slice):
-        #     for j in range(self.patch_slice):
-        #         input_shape_reshaped_list[:, :, i*self.patch_slice+j, :, :] = x[:, :, i*input_shape[2]//self.patch_slice:(i+1)*input_shape[2]//self.patch_slice, j*input_shape[3]//self.patch_slice:(j+1)*input_shape[3]//self.patch_slice].clone()
-        # [1,3,4,256,256] -conv1---> [1, 64, 2, 128,128] 下采样太多？  # 立体维度不下采样
-        # device = torch.device('cuda:0')
-        
-        # # # 将第2个维度进行通道混洗 --> group = 2 效果变差了。
-        # # batch_size, num_channels, num_3d,height, width = input_shape_reshaped_list.shape
-        # # channels_per_group = num_3d // self.num_groups
-        # # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, self.num_groups, channels_per_group, height, width)
-        # # input_shape_reshaped_list = input_shape_reshaped_list.permute(0, 1, 3, 2, 4, 5).contiguous()
-        # # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, num_3d, height, width)
         
         x = self.conv1(input_shape_reshaped_list)
         x = self.bn1(x)
@@ -617,32 +490,16 @@ class ResNet(Backbone):
         # reshape 
         x_layer1_shape = x.size()
 
-        # reshape回去也要同样方法？ 保持空间信息特征 --> 先直接view回去 空间信息反正都已经丢失了
-        # x_layer1_reshape2d = x.view(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*self.patch_slice,x_layer1_shape[-1]*self.patch_slice)
-
-        
-        # ### 先通道混洗回去，再reshape回去
-        # # 将通道混洗的操作 reshape回来 因为后面是2d卷积 要不混合的空间重新排列成原始的
-        # batch_size, num_channels, num_3d,height, width = x.shape
-        # # self.num_groups = 2  # 将通道分成4组
-        # channels_per_group = num_3d // self.num_groups
-        # x = x.view(batch_size, num_channels, self.num_groups, channels_per_group, height, width)
-        # x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
-        # x = x.view(batch_size, num_channels, num_3d, height, width)
-        
-
-        # x_layer1_reshape2d = x.clone().view_as(torch.zeros(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*self.patch_slice,x_layer1_shape[-1]*self.patch_slice))
-        
+        # x_layer1_reshape2d = x.clone().view_as(torch.zeros(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*self.patch_slice,x_layer1_shape[-1]*self.patch_slice)) 
         # for i in range(self.patch_slice):
         #     for j in range(self.patch_slice):
-        #         # x_layer1_reshape2d[:, :, i*x_layer1_shape[-2]:(i+1)*x_layer1_shape[-2], j*x_layer1_shape[-1]:(j+1)*x_layer1_shape[-1]] = x[:, :, i*self.patch_slice+j, :, :].clone()
-        #         # 因为通道混洗操作 要行列反着来
-        #         x_layer1_reshape2d[:, :, i*x_layer1_shape[-2]:(i+1)*x_layer1_shape[-2], j*x_layer1_shape[-1]:(j+1)*x_layer1_shape[-1]] = x[:, :, j*self.patch_slice+i, :, :].clone()
+        #         x_layer1_reshape2d[:, :, i::self.patch_slice, j::self.patch_slice] = x[:, :, i*self.patch_slice+j, :, :].clone()
 
-        x_layer1_reshape2d = x.clone().view_as(torch.zeros(x_layer1_shape[0],x_layer1_shape[1],x_layer1_shape[-2]*self.patch_slice,x_layer1_shape[-1]*self.patch_slice)) 
-        for i in range(self.patch_slice):
-            for j in range(self.patch_slice):
-                x_layer1_reshape2d[:, :, i::self.patch_slice, j::self.patch_slice] = x[:, :, i*self.patch_slice+j, :, :].clone()
+        # 用直接cat到channel维度的方式试一下
+        x_layer1_reshape2d = x.clone().view_as(torch.zeros(x_layer1_shape[0],x_layer1_shape[1] + x_layer1_shape[2], x_layer1_shape[-2],x_layer1_shape[-1])) 
+        for i in range(x_layer1_shape[1]):
+            for j in range (x_layer1_shape[2]): # 怎么cat存疑
+                x_layer1_reshape2d[:,j + i*,:,:] = x[::]
 
 
         x = self.layer2(x_layer1_reshape2d)
@@ -656,7 +513,7 @@ class ResNet(Backbone):
 
 
 @BACKBONE_REGISTRY.register()
-def build_resnet_vd3d_backbone(cfg, input_shape):
+def build_resnet_vd3d_ch1_backbone(cfg, input_shape):
 
     depth = cfg.MODEL.RESNETS.DEPTH
     norm_name = cfg.MODEL.RESNETS.NORM
@@ -718,25 +575,6 @@ if __name__ == '__main__':
     input_shape = img_tensor.size()
     patch_slice = 4
 
-
-    # # 定义需要重新排列的行的索引
-    # # 生成数字列表
-    # index = [i + j*patch_slice*patch_slice for i in range(0, patch_slice*patch_slice) for j in range(0, 384//patch_slice//patch_slice)]
-
-    # # 输出结果
-    # print(index)
-    # # 将需要重新排列的行按照索引进行选择
-    # selected_rows = torch.index_select(x, 1, torch.LongTensor(index))
-    # # 把input_shape_reshaped_list转化成图像格式显示出来
-    # import matplotlib.pyplot as plt
-    # fig, axs = plt.subplots(1, 1)
-    # print(selected_rows.shape)
-    # img_np = selected_rows.numpy()
-    # img_np = img_np.transpose((1, 2, 0))
-    # axs.imshow(img_np)
-    # plt.imshow(img_np)
-    # plt.show()
-   
     
     input_shape_reshaped_list = torch.zeros(input_shape[0],patch_slice*patch_slice, input_shape[1]//patch_slice,input_shape[2]//patch_slice)
     for i in range(patch_slice):
@@ -744,26 +582,6 @@ if __name__ == '__main__':
             # 降采样方式
             input_shape_reshaped_list[:, i*patch_slice+j, :, :] = x[:, i::patch_slice, j::patch_slice]
 
-    # input_shape_reshaped_list = torch.zeros(input_shape[0],patch_slice*patch_slice, input_shape[1]//patch_slice,input_shape[2]//patch_slice)
-    # for i in range(patch_slice):
-    #     for j in range(patch_slice):
-    #         # input_shape_reshaped_list[:, i*patch_slice+j, :, :] = x[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice]
-    #         # 为了更好的信息交互，我要采用降采样的方式来reshape --> 15 26 37 48 行列重排
-    #         # input_shape_reshaped_list[:, i*patch_slice+j, :, :] = x[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice]
-    #         input_shape_reshaped_list[:, i*patch_slice+j, :, :] = x[]
-    # # 将x y 行列重排 
-    
-    # input_shape_reshaped_list = x.view(input_shape[0],patch_slice*patch_slice, input_shape[1]//patch_slice,input_shape[2]//patch_slice)
-
-    # # 将第2个维度进行通道混洗
-    # batch_size, num_channels, height, width = input_shape_reshaped_list.shape
-    # num_groups = 2  # 将通道分成4组
-    # channels_per_group = num_channels // num_groups
-    # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_groups, channels_per_group, height, width)
-    # input_shape_reshaped_list = input_shape_reshaped_list.permute(0, 2, 1, 3, 4).contiguous()
-    # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, height, width)
-
-    # reshape_img = img_tensor.view(3, 16, img_tensor.shape[1]//4, img_tensor.shape[2]//4)
     res = []
     for i in range(16):
         img_tensor_p = input_shape_reshaped_list[:,i,::]
@@ -779,22 +597,6 @@ if __name__ == '__main__':
         axs[i//4, i%4].imshow(img_np)
         plt.imshow(img_np)
     plt.show()
-    
-    # # reshape回去
-    # # 将通道混洗后的张量reshape回去
-    # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_groups, channels_per_group, height, width)
-    # input_shape_reshaped_list = input_shape_reshaped_list.permute(0, 2, 1, 3, 4).contiguous()
-    # input_shape_reshaped_list = input_shape_reshaped_list.view(batch_size, num_channels, height, width)
-
-    # output = torch.zeros(input_shape[0],input_shape[1], input_shape[2])
-    # # 把切成16块的input_shape_reshaped_list拼接回去
-    # for i in range(patch_slice):
-    #     for j in range(patch_slice):
-    #         # output[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice] = input_shape_reshaped_list[:, i*patch_slice+j, :, :]
-    #         # 行列交换
-    #         # output[:, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice] = input_shape_reshaped_list[:, i*patch_slice+j, :, :]
-    #         # input_shape_reshaped_list = input_shape_reshaped_list.transpose_(2,3)
-    #         output[:, i*input_shape[1]//patch_slice:(i+1)*input_shape[1]//patch_slice, j*input_shape[2]//patch_slice:(j+1)*input_shape[2]//patch_slice] = input_shape_reshaped_list[:, j*patch_slice+i, :, :]
     
 
     # 把降采样后的reshape回去
@@ -846,7 +648,7 @@ if __name__ == '__main__':
                       help="support fp16 for inference")
     args = args.parse_args()
 
-    args.config_file = 'D:\project_python\SparseInst\configs/ares3d_giam_dcn.yaml'
+    args.config_file = 'D:\project_python\SparseInst\configs/ares3dch1.yaml'
     print("Command Line Args:", args)
     cfg = setup(args)
     model = build_backbone(cfg)

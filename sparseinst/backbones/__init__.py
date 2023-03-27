@@ -2,3 +2,4 @@ from .resnet import build_resnet_vd_backbone
 from .resnet_3d import build_resnet_vd3d_backbone
 from .pvt import build_pyramid_vision_transformer
 from .cspnet import build_cspnet_backbone
+from .resnet3d import build_resnet_vd3d_ch1_backbone

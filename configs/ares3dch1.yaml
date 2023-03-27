@@ -8,7 +8,7 @@ MODEL:
   
   BACKBONE:
     FREEZE_AT: 0
-    NAME: "build_resnet_vd3d_backbone"
+    NAME: "build_resnet_vd3d_ch1_backbone"
   RESNETS:
     DEFORM_ON_PER_STAGE: [2, False, True, True] # dcn on res4, res5
 INPUT:
