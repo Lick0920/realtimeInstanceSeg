@@ -1,0 +1,49 @@
+_BASE_: "Base-SparseInst.yaml"
+
+MODEL:
+  # SPARSE_INST: 
+  #   DATASET_MAPPER: None # 不datasetmapper 
+  # WEIGHTS: "pretrained_models/resnet50d_ra2-464e36ba.pth"
+  # WEIGHTS: "D:\\project_python\\SparseInst\\output\\aaaresnet3d_bs8_cocopretrain_jiangcaiyang\\model_0004999.pth"
+  WEIGHTS: "D:\\project_python\\SparseInst\\output\\a2kinput_ori_downchannel_resume0.9\\model_0009999.pth"
+
+  BACKBONE:
+    FREEZE_AT: 0
+    NAME: "build_resnet_vd3d_down_backbone"
+  RESNETS:
+    DEFORM_ON_PER_STAGE: [3, False, True, True] # dcn on res4, res5
+INPUT:
+  CROP:
+    ENABLED: False
+    TYPE: "absolute_range"
+    SIZE: (3072, 4800)  # 均乘8 --> 
+  MASK_FORMAT: "polygon"
+
+  # MIN_SIZE_TRAIN: (3328, 3584, 3840, 4096, 4352, 4608, 4864, 5120) #--> 均乘8
+  MIN_SIZE_TRAIN: (3072,3072)
+  MAX_SIZE_TRAIN: 3072
+  MIN_SIZE_TEST: 3072
+  MAX_SIZE_TEST: 3072
+  FORMAT: "RGB"
+  MASK_FORMAT: "bitmask"
+
+OUTPUT_DIR: "output/a2kinput_ori_downchannel_resume0.9/"
+SOLVER:
+  IMS_PER_BATCH: 1
+  BASE_LR: 0.00000625
+  CHECKPOINT_PERIOD: 2000
+  # IMS_PER_BATCH: 1
+  # BASE_LR: 0.00000078125
+DATASETS:
+  PRECOMPUTED_PROPOSAL_TOPK_TEST: 1000
+  PRECOMPUTED_PROPOSAL_TOPK_TRAIN: 2000
+  PROPOSAL_FILES_TEST: []
+  PROPOSAL_FILES_TRAIN: []
+  TEST:
+  - coco_rootair_train_ori
+  TRAIN:
+  - coco_rootair_train_ori
+  # - coco_rootair_val
+
+TEST:
+  EVAL_PERIOD: 733000

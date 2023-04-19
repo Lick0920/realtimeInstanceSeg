@@ -1,0 +1,52 @@
+_BASE_: "Base-SparseInst.yaml"
+
+MODEL:
+  # SPARSE_INST: 
+  #   DATASET_MAPPER: None # 不datasetmapper 
+  # WEIGHTS: "pretrained_models/resnet50d_ra2-464e36ba.pth"
+  # WEIGHTS: "D:\\project_python\\SparseInst\\output\\aaaresnet3d_bs8_cocopretrain_jiangcaiyang\\model_0004999.pth"
+  # WEIGHTS: "D:\\project_python\\SparseInst\\output\\a2kinput_ori_downchannel_retry_re\\model_0004999.pth"
+  # WEIGHTS: 'D:\\project_python\\SparseInst\\output\\aaaresnet3d_bs8_cocopretrain_jiangcaiyang\\model_0004999.pth' # 这个得到好的结果
+  WEIGHTS: "D:\\project_python\\SparseInst\\pretrained_models\\sparse_inst_r50vd_dcn_giam_aug_67dc06.pth"
+  # SPARSE_INST:
+  #   ENCODER:
+  #     IN_FEATURES:
+  SPARSE_INST:
+    ENCODER:
+      IN_FEATURES:
+      - spd_branch
+      - res2
+      - res3
+      - res4
+      - res5
+  BACKBONE:
+    FREEZE_AT: 0
+    NAME: "build_resnet_vd_spd_branch_backbone"
+  RESNETS:
+    OUT_FEATURES: ["spd_branch","res2","res3", "res4", "res5"]
+    DEFORM_ON_PER_STAGE: [False, False, True, True] # dcn on res4, res5
+INPUT:
+  CROP:
+    ENABLED: True
+    TYPE: "absolute_range"
+    SIZE: (384, 600)
+  MASK_FORMAT: "polygon"
+SOLVER:
+  IMS_PER_BATCH: 8
+  BASE_LR: 0.00000625
+  CHECKPOINT_PERIOD: 200
+OUTPUT_DIR: "output_fenzhi/2d_base_spd1res2345_small_bs8(384,600)/"
+
+DATASETS:
+  PRECOMPUTED_PROPOSAL_TOPK_TEST: 1000
+  PRECOMPUTED_PROPOSAL_TOPK_TRAIN: 2000
+  PROPOSAL_FILES_TEST: []
+  PROPOSAL_FILES_TRAIN: []
+  TEST:
+  - coco_rootair_train_ori
+  TRAIN:
+  - coco_rootair_train_ori
+  # - coco_rootair_val
+
+TEST:
+  EVAL_PERIOD: 73300

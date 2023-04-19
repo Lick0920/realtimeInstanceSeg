@@ -1,0 +1,17 @@
+from .resnet import build_resnet_vd_backbone
+from .resnet_3d import build_resnet_vd3d_backbone
+from .pvt import build_pyramid_vision_transformer
+from .cspnet import build_cspnet_backbone
+# from .resnet3d import build_resnet_vd3d_ch1_backbone
+from .resnet3d_depth import build_resnet_vd3d_down_backbone
+from .resnet3d_depth_qiekuai import build_resnet_vd3d_down_backbone_qiekuai
+from .resnet3d_depth_patchall import build_resnet_vd3d_down_backbone_patchall
+from .resnet3d_depth_23TT import build_resnet_vd3d_down23TT_backbone
+from .resnet3d_depth_4x4 import build_resnet_vd3d_down4x4_backbone
+from .resnet3d import build_resnet_vd3d_down_large_backbone
+from .res_SPD import  build_resnet_SPD_backbone
+from .resnet3d_22TT import build_resnet_vd3d_22TT_backbone
+from .resnet3d_depth_down3x2x2 import build_resnet_vd3d_down_3x2x2_backbone
+from .fenzhi_spd_solo import build_resnet_vd_backbone_spd_solo
+from .resnet3d_depth_down_2xl1l2 import build_resnet_vd3d_down_2xl1l2_backbone
+from .resnet_2d_spd_branch1res2345 import build_resnet_vd_spd_branch_backbone
