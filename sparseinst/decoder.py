@@ -227,28 +227,28 @@ class GroupInstanceBranch(nn.Module):
         self.prior_prob = 0.01
         self._init_weights()
 
-        ############### lck  0418 ###################
-        with open('D:\\project_python\\SparseInst\\coco_adj.pkl', 'rb') as f:
-            self.adj_matrix = pickle.load(f).astype(np.float32)
-            # self.adj_matrix = np.float32(self.adj_matrix)
+        # ############### lck  0418 ###################
+        # with open('D:\\project_python\\SparseInst\\coco_adj.pkl', 'rb') as f:
+        #     self.adj_matrix = pickle.load(f).astype(np.float32)
+        #     # self.adj_matrix = np.float32(self.adj_matrix)
             
-            # 假设已经创建好了coo_matrix类型的矩阵coo_matrix
-            coo_matrix = sp.coo_matrix(self.adj_matrix)  # 转成coo格式
-            i = torch.LongTensor([coo_matrix.row, coo_matrix.col])  # 索引
-            v = torch.FloatTensor(coo_matrix.data)  # 数据
-            shape = coo_matrix.shape  # 形状
-            tensor = torch.sparse.FloatTensor(i, v, torch.Size(shape)).to_dense()  # 创建稀疏张量
-            self.adj_matrix = nn.Parameter(tensor, requires_grad=False)
+        #     # 假设已经创建好了coo_matrix类型的矩阵coo_matrix
+        #     coo_matrix = sp.coo_matrix(self.adj_matrix)  # 转成coo格式
+        #     i = torch.LongTensor([coo_matrix.row, coo_matrix.col])  # 索引
+        #     v = torch.FloatTensor(coo_matrix.data)  # 数据
+        #     shape = coo_matrix.shape  # 形状
+        #     tensor = torch.sparse.FloatTensor(i, v, torch.Size(shape)).to_dense()  # 创建稀疏张量
+        #     self.adj_matrix = nn.Parameter(tensor, requires_grad=False)
 
-        self.graph_weight_fc = nn.Linear(1025, 1024) # 
-        self.relu = nn.ReLU(inplace=True)
-        # ######################lck 0418 ################
-        # dim = 1024
-        self.num_classes = cfg.MODEL.SPARSE_INST.DECODER.NUM_CLASSES # 80
-        kernel_dim = cfg.MODEL.SPARSE_INST.DECODER.KERNEL_DIM # 128
-        self.cls_score_new = nn.Linear(expand_dim, self.num_classes) # 256 80
-        self.mask_kernel_new = nn.Linear(expand_dim, kernel_dim)  # 256 128 # for mask head just linear
-        self.objectness_new = nn.Linear(expand_dim, 1)
+        # self.graph_weight_fc = nn.Linear(1025, 1024) # 
+        # self.relu = nn.ReLU(inplace=True)
+        # # ######################lck 0418 ################
+        # # dim = 1024
+        # self.num_classes = cfg.MODEL.SPARSE_INST.DECODER.NUM_CLASSES # 80
+        # kernel_dim = cfg.MODEL.SPARSE_INST.DECODER.KERNEL_DIM # 128
+        # self.cls_score_new = nn.Linear(expand_dim, self.num_classes) # 256 80
+        # self.mask_kernel_new = nn.Linear(expand_dim, kernel_dim)  # 256 128 # for mask head just linear
+        # self.objectness_new = nn.Linear(expand_dim, 1)
 
     def _init_weights(self):
         for m in self.inst_convs.modules():
@@ -291,38 +291,38 @@ class GroupInstanceBranch(nn.Module):
         pred_kernel = self.mask_kernel(inst_features) # 1024 128  ---》 去乘 mask的？  B 100 128
         pred_scores = self.objectness(inst_features) # 1024 1   B 100 1
 
-        ############ 0418 #### lck ##############
-        ############ 语义增强 pred_kernel 修改 #########
-        # 语义增强特征
-        # 1.build global semantic pool
-        global_semantic_pool = torch.cat((self.cls_score.weight,
-                                            self.cls_score.bias.unsqueeze(1)), 1).detach() # 80 1024
-        # print("global semantic pool data",global_semantic_pool.data.max(), global_semantic_pool.data.min())
-        # 2.compute graph attention  ---》 不要 attention_map
-        # attention_map = nn.Softmax(1)(torch.mm(features, torch.transpose(global_semantic_pool, 0, 1)))
-        # 3.adaptive global reasoning
-        # alpha_em = attention_map.unsqueeze(-1) * torch.mm(self.adj_gt, global_semantic_pool).unsqueeze(0)
-        # alpha_em = alpha_em.view(-1, global_semantic_pool.size(-1))
-        ######### 自己理解的 不加attention ######
-        # print("adj_matrix", self.adj_matrix.data.max(), self.adj_matrix.data.min())
-        alpha_em = torch.mm(self.adj_matrix, global_semantic_pool)
-        alpha_em = self.graph_weight_fc(alpha_em)
-        alpha_em = self.relu(alpha_em) # 80 128
-        # n_classes = self.inst_branch.cls_score.weight.size(0)
-        cls_prob = nn.Softmax(2)(pred_logits) # 8 100 80
-        # print("cls_prob", cls_prob.data.max(), cls_prob.data.min())
-        enhenced_f = torch.bmm(cls_prob, torch.unsqueeze(alpha_em, dim=0).repeat(cls_prob.shape[0], 1,1)) # B 100 Eout
-        # pred_kernel = enhenced_f   # 不能直接用
-        # 按照自己理解修改 ##### 
-        # cls_prob = nn.Softmax(1)(pred_scores).view(len(img_meta), -1, n_classes)
-        # enhanced_feat = torch.bmm(cls_prob, alpha_em.view(len(img_meta), -1, self.graph_out_channels))
-        # enhanced_feat = enhanced_feat.view(-1, self.graph_out_channels)
+        # ############ 0418 #### lck ##############
+        # ############ 语义增强 pred_kernel 修改 #########
+        # # 语义增强特征
+        # # 1.build global semantic pool
+        # global_semantic_pool = torch.cat((self.cls_score.weight,
+        #                                     self.cls_score.bias.unsqueeze(1)), 1).detach() # 80 1024
+        # # print("global semantic pool data",global_semantic_pool.data.max(), global_semantic_pool.data.min())
+        # # 2.compute graph attention  ---》 不要 attention_map
+        # # attention_map = nn.Softmax(1)(torch.mm(features, torch.transpose(global_semantic_pool, 0, 1)))
+        # # 3.adaptive global reasoning
+        # # alpha_em = attention_map.unsqueeze(-1) * torch.mm(self.adj_gt, global_semantic_pool).unsqueeze(0)
+        # # alpha_em = alpha_em.view(-1, global_semantic_pool.size(-1))
+        # ######### 自己理解的 不加attention ######
+        # # print("adj_matrix", self.adj_matrix.data.max(), self.adj_matrix.data.min())
+        # alpha_em = torch.mm(self.adj_matrix, global_semantic_pool)
+        # alpha_em = self.graph_weight_fc(alpha_em)
+        # alpha_em = self.relu(alpha_em) # 80 128
+        # # n_classes = self.inst_branch.cls_score.weight.size(0)
+        # cls_prob = nn.Softmax(2)(pred_logits) # 8 100 80
+        # # print("cls_prob", cls_prob.data.max(), cls_prob.data.min())
+        # enhenced_f = torch.bmm(cls_prob, torch.unsqueeze(alpha_em, dim=0).repeat(cls_prob.shape[0], 1,1)) # B 100 Eout
+        # # pred_kernel = enhenced_f   # 不能直接用
+        # # 按照自己理解修改 ##### 
+        # # cls_prob = nn.Softmax(1)(pred_scores).view(len(img_meta), -1, n_classes)
+        # # enhanced_feat = torch.bmm(cls_prob, alpha_em.view(len(img_meta), -1, self.graph_out_channels))
+        # # enhanced_feat = enhanced_feat.view(-1, self.graph_out_channels)
 
-        # 还是再训练新的分类器 
-        addcls_feature = torch.cat((inst_features, enhenced_f), dim=1)
-        pred_logits = self.cls_score_new(addcls_feature)
-        pred_kernel = self.mask_kernel_new(addcls_feature)
-        pred_scores = self.objectness_new(addcls_feature)
+        # # 还是再训练新的分类器 
+        # addcls_feature = torch.cat((inst_features, enhenced_f), dim=1)
+        # pred_logits = self.cls_score_new(addcls_feature)
+        # pred_kernel = self.mask_kernel_new(addcls_feature)
+        # pred_scores = self.objectness_new(addcls_feature)
         #######################################################################################
 
         return pred_logits, pred_kernel, pred_scores, iam
